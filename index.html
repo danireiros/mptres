@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MPTres</title>
+    <script>
+        (function () {
+            try {
+                var stored = localStorage.getItem('theme');
+                if (stored === 'dark' || (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                    document.documentElement.setAttribute('data-theme', 'dark');
+                }
+            } catch (e) {}
+        })();
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/app.css">
+    <script src="js/palette.js"></script>
+</head>
+<body>
+    <div class="ambient-canvas" id="ambientCanvas" data-palette="warm" aria-hidden="true">
+        <div class="ambient-nature"></div>
+        <div class="ambient-blob ambient-blob--1"></div>
+        <div class="ambient-blob ambient-blob--2"></div>
+        <div class="ambient-blob ambient-blob--3"></div>
+        <div class="ambient-blob ambient-blob--4"></div>
+        <div class="ambient-blob ambient-blob--5"></div>
+        <div class="ambient-blob ambient-blob--6"></div>
+    </div>
+
+    <div class="page-content">
+        <header class="glass top-bar" role="banner">
+            <div class="top-bar__inner">
+                <a class="brand text-theme" href="./">
+                    MP<span class="text-gradient-warm">Tres</span>
+                </a>
+                <fieldset class="theme-switcher" id="themeSwitcher">
+                    <legend class="sr-only">Elegir tema</legend>
+                    <label class="theme-switcher__option">
+                        <input class="theme-switcher__input" type="radio" name="theme" value="light" data-option="1" checked>
+                        <svg class="theme-switcher__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <circle cx="12" cy="12" r="4"/>
+                            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+                        </svg>
+                    </label>
+                    <label class="theme-switcher__option">
+                        <input class="theme-switcher__input" type="radio" name="theme" value="dark" data-option="2">
+                        <svg class="theme-switcher__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+                        </svg>
+                    </label>
+                </fieldset>
+            </div>
+        </header>
+
+        <main class="main">
+            <div class="workspace">
+                <section class="workspace__left" aria-label="Letra">
+                    <div class="liquidGlass-wrapper rounded-3xl lyrics-panel-wrap">
+                        <div class="liquidGlass-effect rounded-3xl"></div>
+                        <div class="liquidGlass-tint rounded-3xl"></div>
+                        <div class="liquidGlass-shine rounded-3xl"></div>
+                        <div class="liquidGlass-text rounded-3xl panel-padding lyrics-panel" id="lyricsPanel">
+                            <div class="lyrics-panel__header">
+                                <h2 class="lyrics-panel__heading">Letra</h2>
+                                <label class="lyrics-panel__lrc-btn" for="lrcInput" title="Importar archivo .lrc">.lrc</label>
+                                <input type="file" id="lrcInput" accept=".lrc,text/plain" hidden>
+                                <fieldset class="theme-switcher" id="lyricsModeSwitcher">
+                                    <legend class="sr-only">Modo de letra</legend>
+                                    <label class="theme-switcher__option">
+                                        <input class="theme-switcher__input" type="radio" name="lyricsMode" value="list" data-option="1" checked>
+                                        <svg class="theme-switcher__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                            <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
+                                        </svg>
+                                    </label>
+                                    <label class="theme-switcher__option">
+                                        <input class="theme-switcher__input" type="radio" name="lyricsMode" value="videoclip" data-option="2">
+                                        <svg class="theme-switcher__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                            <path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/>
+                                            <rect x="2" y="6" width="14" height="12" rx="2"/>
+                                        </svg>
+                                    </label>
+                                </fieldset>
+                            </div>
+                            <div class="lyrics-panel__stage">
+                                <div class="lyrics-panel__body">
+                                    <div class="lyrics-panel__viz visualizer" id="visualizer">
+                                        <div class="visualizer__bars" id="visualizerBars"></div>
+                                    </div>
+                                    <div class="lyrics-panel__content">
+                                        <p class="lyrics-panel__status" id="lyricsStatus">Sube una canción para ver la letra</p>
+                                        <div class="lyrics-panel__scroll" id="lyricsScroll" hidden>
+                                            <div class="lyrics-karaoke" id="lyricsKaraoke" hidden>
+                                                <p class="lyrics-karaoke__line lyrics-karaoke__line--prev" id="lyricsKaraokePrev"></p>
+                                                <p class="lyrics-karaoke__line lyrics-karaoke__line--current" id="lyricsKaraokeCurrent"></p>
+                                                <p class="lyrics-karaoke__line lyrics-karaoke__line--next" id="lyricsKaraokeNext"></p>
+                                                <p class="lyrics-panel__badge" id="lyricsKaraokeBadge" hidden></p>
+                                            </div>
+                                            <div class="lyrics-panel__list" id="lyricsList" role="list" hidden aria-hidden="true"></div>
+                                        </div>
+                                        <div class="lyrics-panel__plain" id="lyricsPlain" hidden></div>
+                                        <div class="lyrics-videoclip" id="lyricsVideoclip" hidden>
+                                            <div class="lyrics-vc__stage" id="lyricsVcStage">
+                                                <p class="lyrics-vc__line lyrics-vc__line--current" id="vcCurrent"></p>
+                                                <p class="lyrics-vc__line lyrics-vc__line--next" id="vcNext"></p>
+                                            </div>
+                                            <p class="lyrics-vc__hint" id="vcHint" hidden>Sube una canción con letra</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="workspace__right" aria-label="Reproductor">
+                    <div class="liquidGlass-wrapper rounded-3xl">
+                        <div class="liquidGlass-effect rounded-3xl"></div>
+                        <div class="liquidGlass-tint rounded-3xl"></div>
+                        <div class="liquidGlass-shine rounded-3xl"></div>
+                        <div class="liquidGlass-text rounded-3xl panel-padding player-panel">
+                            <div class="player is-empty" id="player">
+                                <div class="player__cover-wrap" id="coverUpload">
+                                    <input type="file" id="fileInput" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac" hidden>
+                                    <label for="fileInput" class="player__cover-upload" id="coverUploadLabel">
+                                        <i class="fas fa-cloud-arrow-up" aria-hidden="true"></i>
+                                        <span class="player__cover-upload-title">Sube una canción</span>
+                                        <span class="player__cover-upload-hint">MP3, WAV, OGG, M4A, FLAC…</span>
+                                    </label>
+                                    <img class="player__cover" id="coverArt" alt="" width="280" height="280" hidden>
+                                    <div class="player__cover-fallback" id="coverFallback" hidden aria-hidden="true">
+                                        <i class="fas fa-music"></i>
+                                    </div>
+                                </div>
+                                <h1 class="player__title" id="trackTitle">Sube una canción</h1>
+                                <div class="player__body">
+                                    <div class="player__controls">
+                                        <button type="button" class="play-btn liquid-glass glass-white" id="playBtn" aria-label="Reproducir" disabled>
+                                            <i class="fas fa-play" id="playIcon" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                    <div class="player__progress">
+                                        <input type="range" class="progress-range" id="progressRange" min="0" max="100" value="0" step="0.1" aria-label="Posición de reproducción" disabled>
+                                        <div class="player__time">
+                                            <span id="currentTime">0:00</span>
+                                            <span id="duration">0:00</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <audio id="audio" preload="metadata"></audio>
+
+    <script src="https://cdn.jsdelivr.net/npm/jsmediatags@3.9.7/dist/jsmediatags.min.js"></script>
+    <script src="js/lyrics-id3.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
