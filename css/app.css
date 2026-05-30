@@ -749,49 +749,31 @@ body {
     -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 8%, #000 92%, transparent 100%);
 }
 
-/* Vista karaoke: solo 3 nodos de texto, sin lista ni scroll transform */
-.lyrics-karaoke {
+/* Un solo bloque de texto: sin lista, sin scroll animado */
+.lyrics-stage {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 0.85rem;
     min-height: 100%;
     padding: 1.5rem 1.25rem 2rem;
     box-sizing: border-box;
     text-align: center;
 }
 
-.lyrics-karaoke__line {
+.lyrics-now {
     margin: 0;
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
+    padding: 1rem 1.35rem;
+    border-radius: 0.75rem;
+    font-size: clamp(0.95rem, 3.4cqi, 1.12rem);
+    font-weight: 700;
     line-height: 1.45;
     white-space: pre-line;
     overflow-wrap: break-word;
     word-break: break-word;
-}
-
-.lyrics-karaoke__line--prev,
-.lyrics-karaoke__line--next {
-    font-size: clamp(0.82rem, 2.8cqi, 0.95rem);
-    color: var(--glass-muted);
-    opacity: 0.4;
-    text-shadow:
-        0 0 8px rgba(0, 0, 0, 0.75),
-        0 1px 3px rgba(0, 0, 0, 0.85);
-}
-
-.lyrics-karaoke__line--next {
-    opacity: 0.48;
-}
-
-.lyrics-karaoke__line--current {
-    font-size: clamp(0.95rem, 3.4cqi, 1.12rem);
-    font-weight: 700;
-    padding: 1rem 1.35rem;
-    border-radius: 0.75rem;
     cursor: pointer;
     background: color-mix(in srgb, var(--accent-mid) 10%, transparent);
     box-shadow:
@@ -806,26 +788,11 @@ body {
         drop-shadow(0 0 6px rgba(0, 0, 0, 0.95))
         drop-shadow(0 1px 3px rgba(0, 0, 0, 1))
         drop-shadow(0 2px 10px rgba(0, 0, 0, 0.85));
+    contain: content;
 }
 
-.lyrics-karaoke .lyrics-panel__badge {
-    margin-top: 0.5rem;
-}
-
-.lyrics-panel__scroll.is-synced .lyrics-line {
-    cursor: pointer;
-}
-
-.lyrics-panel__list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.65rem;
-    width: 100%;
-    max-width: 100%;
-    box-sizing: border-box;
-    padding: calc(var(--lyrics-body-h) * 0.5) 1.25rem;
-    will-change: transform;
-    transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+.lyrics-stage .lyrics-panel__badge {
+    margin-top: 0.75rem;
 }
 
 .lyrics-line {

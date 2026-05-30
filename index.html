@@ -91,13 +91,10 @@
                                     <div class="lyrics-panel__content">
                                         <p class="lyrics-panel__status" id="lyricsStatus">Sube una canción para ver la letra</p>
                                         <div class="lyrics-panel__scroll" id="lyricsScroll" hidden>
-                                            <div class="lyrics-karaoke" id="lyricsKaraoke" hidden>
-                                                <p class="lyrics-karaoke__line lyrics-karaoke__line--prev" id="lyricsKaraokePrev"></p>
-                                                <p class="lyrics-karaoke__line lyrics-karaoke__line--current" id="lyricsKaraokeCurrent"></p>
-                                                <p class="lyrics-karaoke__line lyrics-karaoke__line--next" id="lyricsKaraokeNext"></p>
-                                                <p class="lyrics-panel__badge" id="lyricsKaraokeBadge" hidden></p>
+                                            <div class="lyrics-stage" id="lyricsStage" hidden>
+                                                <p class="lyrics-now" id="lyricsNow"></p>
+                                                <p class="lyrics-panel__badge" id="lyricsStageBadge" hidden></p>
                                             </div>
-                                            <div class="lyrics-panel__list" id="lyricsList" role="list" hidden aria-hidden="true"></div>
                                         </div>
                                         <div class="lyrics-panel__plain" id="lyricsPlain" hidden></div>
                                         <div class="lyrics-videoclip" id="lyricsVideoclip" hidden>
@@ -159,6 +156,7 @@
     <audio id="audio" preload="metadata"></audio>
 
     <script src="https://cdn.jsdelivr.net/npm/jsmediatags@3.9.7/dist/jsmediatags.min.js"></script>
+    <script src="js/lyrics-sync.js"></script>
     <script src="js/lyrics-id3.js"></script>
     <script src="js/app.js"></script>
 </body>
