@@ -1651,7 +1651,7 @@ body {
     min-width: 0;
     height: 100%;
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     justify-content: center;
 }
 
@@ -1659,7 +1659,7 @@ body {
     width: 100%;
     min-height: 4px;
     height: 100%;
-    transform-origin: bottom center;
+    transform-origin: center center;
     transform: scaleY(0.12);
     border-radius: 999px;
     background: linear-gradient(

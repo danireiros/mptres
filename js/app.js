@@ -66,24 +66,41 @@
     let trackMeta = { title: '', artist: '', album: '', duration: 0 };
     let currentAudioFile = null;
 
-    /** Perfil adaptado desde config CAVA del usuario */
-    const CAVA_CONFIG = {
-        framerate: 100,
+    /**
+     * Perfil del visualizador, afinado para que "retumbe" con reggaeton (kick/dembow
+     * en ~50-110 Hz) pero que funcione bien con cualquier género:
+     *  - fftSize alto → resolución suficiente para separar sub-graves del kick.
+     *  - escala perceptual (dB) + contraste para que se vea detalle en señales bajas.
+     *  - ataque rápido + caída por gravedad (estilo CAVA) → movimiento fluido y con pegada.
+     *  - ecualización visual: realza graves (pegada del kick) y levanta agudos (hats/claps).
+     */
+    const VIS_CONFIG = {
+        framerate: 90,
         bars: 112,
         barSpacing: 0,
+        fftSize: 4096,
+        analyserSmoothing: 0.6,
+        minDecibels: -80,
+        maxDecibels: -14,
+        lowerCutoffFreq: 32,
+        higherCutoffFreq: 16000,
+        contrast: 0.72,
+        attack: 0.62,
+        bassAttack: 0.9,
+        gravity: 0.013,
+        noiseFloor: 0.05,
+        bassBoost: 1.4,
+        trebleLift: 0.55,
         autosens: 2,
-        overshoot: 3,
-        sensitivity: 80,
-        lowerCutoffFreq: 40,
-        higherCutoffFreq: 17500,
     };
 
-    const BAR_COUNT = CAVA_CONFIG.bars;
+    const BAR_COUNT = VIS_CONFIG.bars;
 
     const visualizerEl = document.getElementById('visualizer');
     const visualizerBars = document.getElementById('visualizerBars');
     const barFills = [];
     const barSmoothLevels = [];
+    const barVelocities = [];
     let barSpectrumMap = [];
     let visualizerSensFloor = 0.06;
     let visualizerPeakHold = 0.14;
@@ -174,8 +191,10 @@
 
     function paintIdleVisualizerWave() {
         if (!barFills.length) return;
+        const half = barFills.length / 2;
         barFills.forEach((fill, i) => {
-            const h = 0.22 + Math.abs(Math.sin(i * 0.35)) * 0.38;
+            const m = Math.abs(i + 0.5 - half) / half;
+            const h = 0.2 + Math.abs(Math.sin((1 - m) * Math.PI * 1.5)) * 0.3;
             barSmoothLevels[i] = h;
             fill.style.transform = `scaleY(${h})`;
         });
@@ -1223,26 +1242,34 @@
         return Math.min(maxBin, Math.max(0, Math.round((freq * fftSize) / sampleRate)));
     }
 
-    /** Cada barra = mismo ancho de banda (log entre lower/higher cutoff), izquierda → graves, derecha → agudos. */
+    /**
+     * Espectro espejado en el eje vertical: el centro son los graves y los bordes los
+     * agudos, de modo que la mitad izquierda y la derecha son idénticas. Combinado con
+     * el crecimiento centrado de las barras (CSS) da cuatro cuadrantes simétricos.
+     */
     function buildBarSpectrumMap(bufferLength) {
         barSpectrumMap = [];
         const maxBin = bufferLength - 1;
         const sampleRate = audioCtx?.sampleRate || 48000;
-        const fftSize = analyser?.fftSize || 2048;
-        const logMin = Math.log10(CAVA_CONFIG.lowerCutoffFreq);
-        const logMax = Math.log10(CAVA_CONFIG.higherCutoffFreq);
+        const fftSize = analyser?.fftSize || VIS_CONFIG.fftSize;
+        const logMin = Math.log10(VIS_CONFIG.lowerCutoffFreq);
+        const logMax = Math.log10(VIS_CONFIG.higherCutoffFreq);
+        const half = BAR_COUNT / 2;
+        const step = 1 / half;
 
         for (let i = 0; i < BAR_COUNT; i++) {
-            const t0 = i / BAR_COUNT;
-            const t1 = (i + 1) / BAR_COUNT;
-            const f0 = Math.pow(10, logMin + t0 * (logMax - logMin));
-            const f1 = Math.pow(10, logMin + t1 * (logMax - logMin));
+            // Posición espectral espejada: 0 en el centro (graves) → ~1 en los bordes (agudos).
+            const sp = Math.abs(i + 0.5 - half) / half;
+            const a = Math.max(0, sp - step / 2);
+            const b = Math.min(1, sp + step / 2);
+            const f0 = Math.pow(10, logMin + a * (logMax - logMin));
+            const f1 = Math.pow(10, logMin + b * (logMax - logMin));
             const binStart = freqToBin(f0, sampleRate, fftSize, maxBin);
             const binEnd = Math.max(binStart, freqToBin(f1, sampleRate, fftSize, maxBin));
 
             const blendBins = [];
-            for (let b = binStart; b <= binEnd; b++) {
-                blendBins.push(b);
+            for (let bn = binStart; bn <= binEnd; bn++) {
+                blendBins.push(bn);
             }
             if (!blendBins.length) {
                 blendBins.push(Math.min(maxBin, binStart));
@@ -1250,25 +1277,31 @@
 
             barSpectrumMap.push({
                 blendBins,
+                sp,
             });
         }
     }
 
-    const VISUALIZER_GAIN = (CAVA_CONFIG.sensitivity / 100) * 0.4 * (CAVA_CONFIG.autosens / 2);
     const VISUALIZER_MAX_SCALE = 1;
 
-    /** Leve atenuación en graves (izquierda); mismas bandas, menos pegar al techo. */
-    function lowFreqAttenuation(barIndex) {
-        const t = barIndex / (BAR_COUNT - 1);
-        return 0.76 + 0.24 * Math.pow(t, 0.6);
+    /**
+     * Ecualización visual por banda (sp: 0 = graves, 1 = agudos).
+     * Realza los graves (pegada del kick de reggaeton) y levanta los agudos
+     * (hats/claps), que suelen tener poca energía, para que el espectro quede equilibrado.
+     */
+    function freqGain(sp) {
+        const bass = 1 + (VIS_CONFIG.bassBoost - 1) * Math.pow(Math.max(0, 1 - sp / 0.4), 1.5);
+        const treble = 1 + VIS_CONFIG.trebleLift * Math.pow(Math.max(0, (sp - 0.55) / 0.45), 1.6);
+        return bass * treble;
     }
 
     function initVisualizerBars() {
         visualizerBars.innerHTML = '';
         visualizerBars.style.gridTemplateColumns = `repeat(${BAR_COUNT}, minmax(0, 1fr))`;
-        visualizerBars.style.gap = `${CAVA_CONFIG.barSpacing}px`;
+        visualizerBars.style.gap = `${VIS_CONFIG.barSpacing}px`;
         barFills.length = 0;
         barSmoothLevels.length = 0;
+        barVelocities.length = 0;
         for (let i = 0; i < BAR_COUNT; i++) {
             const bar = document.createElement('div');
             bar.className = 'visualizer__bar';
@@ -1278,6 +1311,7 @@
             visualizerBars.appendChild(bar);
             barFills.push(fill);
             barSmoothLevels.push(0.22);
+            barVelocities.push(0);
         }
     }
 
@@ -1285,10 +1319,10 @@
         if (audioCtx) return;
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 2048;
-        analyser.smoothingTimeConstant = 0.48;
-        analyser.minDecibels = -90;
-        analyser.maxDecibels = -5;
+        analyser.fftSize = VIS_CONFIG.fftSize;
+        analyser.smoothingTimeConstant = VIS_CONFIG.analyserSmoothing;
+        analyser.minDecibels = VIS_CONFIG.minDecibels;
+        analyser.maxDecibels = VIS_CONFIG.maxDecibels;
         audioSource = audioCtx.createMediaElementSource(audio);
         audioSource.connect(analyser);
         analyser.connect(audioCtx.destination);
@@ -1304,17 +1338,19 @@
         blendBins.forEach((b) => {
             const v = data[b] / 255;
             sum += v;
-            peak = Math.max(peak, v);
+            if (v > peak) peak = v;
         });
 
         const avg = sum / blendBins.length;
-        return Math.pow(avg * 0.55 + peak * 0.45, 0.88) * VISUALIZER_GAIN;
+        const mixed = avg * 0.5 + peak * 0.5;
+        return Math.pow(mixed, VIS_CONFIG.contrast);
     }
 
     function setBarScales(scale) {
         const idle = scale <= 0.08 ? 0.22 : scale;
         barFills.forEach((fill, i) => {
             barSmoothLevels[i] = idle;
+            barVelocities[i] = 0;
             fill.style.transform = `scaleY(${idle})`;
         });
         visualizerSensFloor = 0.06;
@@ -1339,9 +1375,11 @@
             raw.push(map ? sampleSpectrumBar(map, freqData) : 0);
         }
 
+        // AGC: el suelo y el techo se adaptan a la sonoridad del tema para que
+        // el espectro llene la altura sin saturar, manteniendo dinámica.
         const framePeak = Math.max(...raw, 0.08);
         const frameMin = Math.min(...raw);
-        const autosensRate = CAVA_CONFIG.autosens * 0.011;
+        const autosensRate = VIS_CONFIG.autosens * 0.011;
 
         visualizerSensFloor = visualizerSensFloor * (1 - autosensRate) + frameMin * autosensRate;
         visualizerPeakHold = Math.max(
@@ -1350,17 +1388,37 @@
         );
 
         const normalizeBase = Math.max(
-            visualizerSensFloor * 1.8,
-            visualizerPeakHold * 1.02,
-            0.13
+            visualizerSensFloor * 1.6,
+            visualizerPeakHold * 1.4,
+            0.14
         );
 
         for (let i = 0; i < BAR_COUNT; i++) {
-            const relative = (raw[i] / normalizeBase) * lowFreqAttenuation(i);
-            const target = Math.max(0.08, Math.min(VISUALIZER_MAX_SCALE, relative * VISUALIZER_MAX_SCALE));
+            const sp = barSpectrumMap[i]?.sp ?? 0;
+            const relative = (raw[i] / normalizeBase) * freqGain(sp);
+            const target = Math.max(
+                VIS_CONFIG.noiseFloor,
+                Math.min(VISUALIZER_MAX_SCALE, relative)
+            );
+
             const prev = barSmoothLevels[i];
-            const smooth = target > prev ? 0.34 : 0.18;
-            const scale = prev + (target - prev) * smooth;
+            let scale;
+
+            if (target >= prev) {
+                // Subida: ataque rápido; más inmediato en graves para que el kick "pegue".
+                const attack = VIS_CONFIG.bassAttack + (VIS_CONFIG.attack - VIS_CONFIG.bassAttack) * sp;
+                scale = prev + (target - prev) * attack;
+                barVelocities[i] = 0;
+            } else {
+                // Bajada: gravedad acelerada → caída fluida sin nunca quedar por debajo de la señal.
+                barVelocities[i] += VIS_CONFIG.gravity;
+                scale = prev - barVelocities[i];
+                if (scale < target) {
+                    scale = target;
+                    barVelocities[i] = 0;
+                }
+            }
+
             barSmoothLevels[i] = scale;
             barFills[i].style.transform = `scaleY(${scale})`;
         }
@@ -1371,7 +1429,7 @@
 
     function visualizerTick(timestamp) {
         if (!lastVisualizerFrame) lastVisualizerFrame = timestamp;
-        const frameInterval = 1000 / CAVA_CONFIG.framerate;
+        const frameInterval = 1000 / VIS_CONFIG.framerate;
 
         if (timestamp - lastVisualizerFrame >= frameInterval) {
             lastVisualizerFrame = timestamp;
