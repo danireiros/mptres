@@ -1,13 +1,13 @@
 (function () {
-    const PALETTE_VAR_KEYS = [
-        ...Array.from({ length: 6 }, (_, i) => [`--blob-${i + 1}-core`, `--blob-${i + 1}-mid`]).flat(),
-        '--accent-from',
-        '--accent-mid',
-        '--accent-to',
-    ];
+    const BLOB_VAR_KEYS = Array.from({ length: 6 }, (_, i) => [
+        `--blob-${i + 1}-core`,
+        `--blob-${i + 1}-mid`,
+    ]).flat();
 
-    const ROTATE_MS = 30000;
-    const TRANSITION_MS = 5000;
+    const ACCENT_KEYS = ['--accent-from', '--accent-mid', '--accent-to'];
+
+    const ROTATE_MS = 45000;
+    const FADE_MS = 2800;
 
     function varsFromBlobs(blobs) {
         const vars = {};
@@ -81,26 +81,16 @@
     ].map((palette) => ({ ...palette, vars: varsFromBlobs(palette.blobs) }));
 
     let currentPaletteId = 'warm';
-    let activeColors = {};
+    let activeLayerId = 'a';
     let rotateTimer = null;
-    let animationFrame = null;
+    let fadeTimer = null;
+    let isFading = false;
 
-    function parseRgb(value) {
-        const match = String(value).match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/);
-        if (!match) return [0, 0, 0];
-        return [Number(match[1]), Number(match[2]), Number(match[3])];
-    }
-
-    function rgbToCss(rgb) {
-        return `rgb(${Math.round(rgb[0])}, ${Math.round(rgb[1])}, ${Math.round(rgb[2])})`;
-    }
-
-    function paletteToRgbMap(palette) {
-        const map = {};
-        PALETTE_VAR_KEYS.forEach((key) => {
-            map[key] = parseRgb(palette.vars[key]);
-        });
-        return map;
+    function getLayers() {
+        return {
+            a: document.getElementById('ambientBlobsA'),
+            b: document.getElementById('ambientBlobsB'),
+        };
     }
 
     function pickRandomPalette(excludeId) {
@@ -110,96 +100,108 @@
         return pool[Math.floor(Math.random() * pool.length)];
     }
 
-    function easeInOutCubic(t) {
-        return t < 0.5 ? 4 * t * t * t : 1 - ((-2 * t + 2) ** 3) / 2;
-    }
-
-    function readColorsFromDom() {
-        const style = getComputedStyle(document.documentElement);
-        const map = {};
-        PALETTE_VAR_KEYS.forEach((key) => {
-            map[key] = parseRgb(style.getPropertyValue(key).trim());
+    function setBlobPaletteOnLayer(layerEl, palette) {
+        if (!layerEl) return;
+        BLOB_VAR_KEYS.forEach((key) => {
+            layerEl.style.setProperty(key, palette.vars[key]);
         });
-        return map;
     }
 
-    function writeColors(colors) {
+    function setAccentsOnRoot(palette) {
         const root = document.documentElement;
-        PALETTE_VAR_KEYS.forEach((key) => {
-            root.style.setProperty(key, rgbToCss(colors[key]));
+        ACCENT_KEYS.forEach((key) => {
+            root.style.setProperty(key, palette.vars[key]);
         });
-        activeColors = { ...colors };
     }
 
-    function cancelAnimation() {
-        if (animationFrame !== null) {
-            cancelAnimationFrame(animationFrame);
-            animationFrame = null;
+    function cancelFade() {
+        if (fadeTimer !== null) {
+            clearTimeout(fadeTimer);
+            fadeTimer = null;
         }
+        isFading = false;
+    }
+
+    function commitLayers(frontEl, backEl, palette) {
+        setBlobPaletteOnLayer(frontEl, palette);
+        frontEl.classList.remove('is-visible');
+        backEl.classList.add('is-visible');
+        setAccentsOnRoot(palette);
+        isFading = false;
+        fadeTimer = null;
     }
 
     function applyPalette(palette, options) {
         const instant = options && options.instant;
+        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         currentPaletteId = palette.id;
 
         const canvas = document.getElementById('ambientCanvas');
         if (canvas) canvas.dataset.palette = palette.id;
 
-        const target = paletteToRgbMap(palette);
-
-        if (instant || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-            cancelAnimation();
-            writeColors(target);
+        const { a: layerA, b: layerB } = getLayers();
+        if (!layerA || !layerB) {
+            setAccentsOnRoot(palette);
             return;
         }
 
-        cancelAnimation();
+        cancelFade();
 
-        const from = Object.keys(activeColors).length === PALETTE_VAR_KEYS.length
-            ? { ...activeColors }
-            : readColorsFromDom();
-
-        const start = performance.now();
-
-        function tick(now) {
-            const progress = Math.min(1, (now - start) / TRANSITION_MS);
-            const eased = easeInOutCubic(progress);
-            const step = {};
-
-            PALETTE_VAR_KEYS.forEach((key) => {
-                const a = from[key];
-                const b = target[key];
-                step[key] = [
-                    a[0] + (b[0] - a[0]) * eased,
-                    a[1] + (b[1] - a[1]) * eased,
-                    a[2] + (b[2] - a[2]) * eased,
-                ];
-            });
-
-            writeColors(step);
-
-            if (progress < 1) {
-                animationFrame = requestAnimationFrame(tick);
-            } else {
-                writeColors(target);
-                animationFrame = null;
-            }
+        if (instant || reducedMotion) {
+            setBlobPaletteOnLayer(layerA, palette);
+            setBlobPaletteOnLayer(layerB, palette);
+            layerA.classList.add('is-visible');
+            layerB.classList.remove('is-visible');
+            activeLayerId = 'a';
+            setAccentsOnRoot(palette);
+            return;
         }
 
-        animationFrame = requestAnimationFrame(tick);
+        const front = activeLayerId === 'a' ? layerA : layerB;
+        const back = activeLayerId === 'a' ? layerB : layerA;
+
+        setBlobPaletteOnLayer(back, palette);
+        setAccentsOnRoot(palette);
+        back.classList.add('is-visible');
+        front.classList.remove('is-visible');
+        isFading = true;
+
+        fadeTimer = window.setTimeout(() => {
+            commitLayers(front, back, palette);
+            activeLayerId = activeLayerId === 'a' ? 'b' : 'a';
+        }, FADE_MS + 80);
     }
 
-    function init() {
-        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-            return;
+    function scheduleRotate() {
+        if (rotateTimer !== null) {
+            clearInterval(rotateTimer);
+            rotateTimer = null;
         }
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        if (document.hidden) return;
 
         rotateTimer = window.setInterval(() => {
+            if (document.hidden || isFading) return;
             applyPalette(pickRandomPalette(currentPaletteId));
         }, ROTATE_MS);
     }
 
-    applyPalette(pickRandomPalette(), { instant: true });
+    function init() {
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                if (rotateTimer !== null) {
+                    clearInterval(rotateTimer);
+                    rotateTimer = null;
+                }
+            } else {
+                scheduleRotate();
+            }
+        });
+        scheduleRotate();
+    }
+
+    const initial = pickRandomPalette();
+    applyPalette(initial, { instant: true });
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);

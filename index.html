@@ -21,12 +21,22 @@
 <body>
     <div class="ambient-canvas" id="ambientCanvas" data-palette="warm" aria-hidden="true">
         <div class="ambient-nature"></div>
-        <div class="ambient-blob ambient-blob--1"></div>
-        <div class="ambient-blob ambient-blob--2"></div>
-        <div class="ambient-blob ambient-blob--3"></div>
-        <div class="ambient-blob ambient-blob--4"></div>
-        <div class="ambient-blob ambient-blob--5"></div>
-        <div class="ambient-blob ambient-blob--6"></div>
+        <div class="ambient-blobs ambient-blobs--a is-visible" id="ambientBlobsA">
+            <div class="ambient-blob ambient-blob--1"></div>
+            <div class="ambient-blob ambient-blob--2"></div>
+            <div class="ambient-blob ambient-blob--3"></div>
+            <div class="ambient-blob ambient-blob--4"></div>
+            <div class="ambient-blob ambient-blob--5"></div>
+            <div class="ambient-blob ambient-blob--6"></div>
+        </div>
+        <div class="ambient-blobs ambient-blobs--b" id="ambientBlobsB">
+            <div class="ambient-blob ambient-blob--1"></div>
+            <div class="ambient-blob ambient-blob--2"></div>
+            <div class="ambient-blob ambient-blob--3"></div>
+            <div class="ambient-blob ambient-blob--4"></div>
+            <div class="ambient-blob ambient-blob--5"></div>
+            <div class="ambient-blob ambient-blob--6"></div>
+        </div>
     </div>
 
     <div class="page-content">
@@ -143,6 +153,14 @@
                                             <span id="currentTime">0:00</span>
                                             <span id="duration">0:00</span>
                                         </div>
+                                    </div>
+                                    <div class="player__volume">
+                                        <label class="player__volume-label" for="volumeRange">
+                                            <i class="fas fa-volume-high" id="volumeIcon" aria-hidden="true"></i>
+                                            <span class="sr-only">Volumen</span>
+                                        </label>
+                                        <input type="range" class="progress-range" id="volumeRange" min="0" max="100" value="100" step="1" aria-label="Volumen">
+                                        <span class="player__volume-value" id="volumeValue" aria-hidden="true">100%</span>
                                     </div>
                                 </div>
                             </div>

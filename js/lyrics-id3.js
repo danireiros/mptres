@@ -194,7 +194,10 @@
         if (!timed.length) return null;
 
         timed.sort((a, b) => a.start - b.start);
-        return buildDisplayCues(timed);
+        if (typeof global.LyricsSync !== 'undefined') {
+            return LyricsSync.buildSegments(timed).segments;
+        }
+        return timed;
     }
 
     /**
@@ -367,7 +370,8 @@
         return sunoClipId ? { type: 'none', sunoClipId, isSuno: true } : null;
     }
 
-    global.LyricsId3 = {
+    const root = global || (typeof window !== 'undefined' ? window : globalThis);
+    root.LyricsId3 = {
         extractLyricsFromMp3,
         parseLrcText,
         buildDisplayCues,
@@ -375,4 +379,4 @@
         plainTextToEstimatedLines,
         alignedWordsToLines,
     };
-})();
+})(typeof window !== 'undefined' ? window : globalThis);

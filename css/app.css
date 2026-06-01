@@ -170,9 +170,23 @@ body {
     pointer-events: none;
 }
 
+.ambient-blobs {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    opacity: 0;
+    pointer-events: none;
+    contain: layout style paint;
+    transition: opacity 2.8s ease-in-out;
+}
+
+.ambient-blobs.is-visible {
+    opacity: 1;
+}
+
 .ambient-blob {
     position: absolute;
-    z-index: 1;
+    z-index: 0;
     border-radius: 50%;
     filter: blur(85px) saturate(160%);
     opacity: 0.92;
@@ -265,6 +279,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
     .ambient-blob { animation: none !important; }
     .ambient-canvas { transition: none; }
+    .ambient-blobs { transition: none; }
 }
 
 /* --- Liquid glass --- */
@@ -1219,6 +1234,36 @@ body {
     justify-content: space-between;
     font-size: 0.8125rem;
     font-variant-numeric: tabular-nums;
+    color: var(--glass-muted);
+}
+
+.player__volume {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    margin-top: 0.15rem;
+}
+
+.player__volume-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    flex-shrink: 0;
+    color: var(--glass-muted);
+    font-size: 0.95rem;
+    cursor: pointer;
+}
+
+.player__volume .progress-range {
+    flex: 1;
+}
+
+.player__volume-value {
+    min-width: 2.5rem;
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
     color: var(--glass-muted);
 }
 
