@@ -15,6 +15,9 @@
         })();
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Black+Ops+One&family=Oswald:wght@700&family=Rubik+Mono+One&family=Teko:wght@700&family=Anton&display=swap">
     <link rel="stylesheet" href="css/app.css">
     <script src="js/palette.js"></script>
 </head>
@@ -79,7 +82,7 @@
                                 <fieldset class="theme-switcher" id="lyricsModeSwitcher">
                                     <legend class="sr-only">Modo de letra</legend>
                                     <label class="theme-switcher__option">
-                                        <input class="theme-switcher__input" type="radio" name="lyricsMode" value="list" data-option="1" checked>
+                                        <input class="theme-switcher__input" type="radio" name="lyricsMode" value="list" data-option="1">
                                         <svg class="theme-switcher__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                             <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
                                         </svg>
@@ -91,10 +94,17 @@
                                             <rect x="2" y="6" width="14" height="12" rx="2"/>
                                         </svg>
                                     </label>
+                                    <label class="theme-switcher__option">
+                                        <input class="theme-switcher__input" type="radio" name="lyricsMode" value="epic" data-option="3" checked>
+                                        <svg class="theme-switcher__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                            <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>
+                                        </svg>
+                                    </label>
                                 </fieldset>
                             </div>
                             <div class="lyrics-panel__stage">
                                 <div class="lyrics-panel__body">
+                                    <div class="lyrics-panel__cover-bg" id="epicCoverBg"></div>
                                     <div class="lyrics-panel__viz visualizer" id="visualizer">
                                         <div class="visualizer__bars" id="visualizerBars"></div>
                                     </div>
@@ -113,6 +123,18 @@
                                                 <p class="lyrics-vc__line lyrics-vc__line--next" id="vcNext"></p>
                                             </div>
                                             <p class="lyrics-vc__hint" id="vcHint" hidden>Sube una canción con letra</p>
+                                        </div>
+                                        <div class="lyrics-epic" id="lyricsEpic" hidden>
+                                            <div class="lyrics-epic__stage" id="lyricsEpicStage"></div>
+                                            <div class="lyrics-epic__toolbar">
+                                                <button type="button" class="lyrics-epic__tool-btn liquid-glass glass-white" id="epicCoverToggle" aria-label="Mostrar portada de fondo" title="Portada de fondo">
+                                                    <i class="fas fa-image" aria-hidden="true"></i>
+                                                </button>
+                                                <button type="button" class="lyrics-epic__tool-btn liquid-glass glass-white" id="epicKaraokeToggle" aria-label="Modo karaoke" title="Karaoke">
+                                                    <i class="fas fa-microphone" aria-hidden="true"></i>
+                                                </button>
+                                            </div>
+                                            <p class="lyrics-epic__hint" id="epicHint" hidden>Sube una canción con letra</p>
                                         </div>
                                     </div>
                                 </div>
@@ -143,8 +165,14 @@
                                 <h1 class="player__title" id="trackTitle">Sube una canción</h1>
                                 <div class="player__body">
                                     <div class="player__controls">
+                                        <button type="button" class="player__nav-btn player__nav-btn--prev liquid-glass glass-white is-unavailable" id="playerPrevBtn" disabled aria-label="Anterior">
+                                            <i class="fas fa-backward-step" aria-hidden="true"></i>
+                                        </button>
                                         <button type="button" class="play-btn liquid-glass glass-white" id="playBtn" aria-label="Reproducir" disabled>
                                             <i class="fas fa-play" id="playIcon" aria-hidden="true"></i>
+                                        </button>
+                                        <button type="button" class="player__nav-btn player__nav-btn--next liquid-glass glass-white is-unavailable" id="playerNextBtn" disabled aria-label="Siguiente">
+                                            <i class="fas fa-forward-step" aria-hidden="true"></i>
                                         </button>
                                     </div>
                                     <div class="player__progress">
@@ -168,6 +196,20 @@
                     </div>
                 </section>
             </div>
+
+            <section class="library" aria-label="Biblioteca">
+                <div class="liquidGlass-wrapper rounded-3xl">
+                    <div class="liquidGlass-effect rounded-3xl"></div>
+                    <div class="liquidGlass-tint rounded-3xl"></div>
+                    <div class="liquidGlass-shine rounded-3xl"></div>
+                    <div class="liquidGlass-text rounded-3xl panel-padding library-panel">
+                        <div class="library-panel__header">
+                            <h2 class="library-panel__heading">Biblioteca</h2>
+                        </div>
+                        <ul class="library__list glass-scroll" id="songLibrary" role="list"></ul>
+                    </div>
+                </div>
+            </section>
         </main>
     </div>
 

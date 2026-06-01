@@ -34,9 +34,23 @@
     const vcHint = document.getElementById('vcHint');
     const lyricsModeInputs = document.querySelectorAll('#lyricsModeSwitcher .theme-switcher__input');
     const lrcInput = document.getElementById('lrcInput');
+    const lyricsEpic = document.getElementById('lyricsEpic');
+    const lyricsEpicStage = document.getElementById('lyricsEpicStage');
+    const epicHint = document.getElementById('epicHint');
+    const songLibrary = document.getElementById('songLibrary');
+    const playerPrevBtn = document.getElementById('playerPrevBtn');
+    const playerNextBtn = document.getElementById('playerNextBtn');
 
-    let lyricsMode = 'list';
+    const SONGS_BASE = 'songs/';
+
+    let lyricsMode = 'epic';
+    let songCatalog = [];
+    let activeCatalogId = null;
     let lastVcLineIndex = -1;
+    let lastEpicLineIndex = -1;
+    let epicCurrentEl = null;
+    let epicNextEl = null;
+    let epicPrevEl = null;
     let bassEnvelope = 0;
 
     let objectUrl = null;
@@ -54,7 +68,7 @@
 
     /** Perfil adaptado desde config CAVA del usuario */
     const CAVA_CONFIG = {
-        framerate: 50,
+        framerate: 100,
         bars: 112,
         barSpacing: 0,
         autosens: 2,
@@ -127,6 +141,7 @@
         coverArt.src = dataUrl;
         coverArt.hidden = false;
         coverFallback.hidden = true;
+        updateEpicCoverBg();
     }
 
     function resetCover() {
@@ -394,6 +409,361 @@
         return Math.min(1, power);
     }
 
+    /* ─── Modo Épico: lógica ─── */
+    const EPIC_FONTS = ['epic-font-0', 'epic-font-1', 'epic-font-2', 'epic-font-3', 'epic-font-4', 'epic-font-5'];
+    const EPIC_SIZES = ['epic-size-0', 'epic-size-1', 'epic-size-2', 'epic-size-3', 'epic-size-4'];
+    const EPIC_ANIMS_IN = [
+        'epic-anim-slam', 'epic-anim-slide-left', 'epic-anim-slide-right',
+        'epic-anim-rise', 'epic-anim-drop', 'epic-anim-flip',
+        'epic-anim-spin', 'epic-anim-zoom-blur', 'epic-anim-tilt-3d',
+    ];
+    const EPIC_ANIMS_OUT = [
+        'epic-anim-exit-shrink', 'epic-anim-exit-left',
+        'epic-anim-exit-right', 'epic-anim-exit-up',
+    ];
+
+    const EPIC_DRIFTS = [
+        null,
+        null,
+        null,
+        'epic-drift-sway-2d',
+        'epic-drift-rock-y',
+        'epic-drift-tilt-depth',
+        'epic-drift-wobble',
+        'epic-drift-float',
+        'epic-drift-perspective-left',
+        'epic-drift-perspective-right',
+        'epic-drift-tilt-3d-deep',
+    ];
+    /* spin-slow quitado: 360° invierte el texto */
+    const EPIC_VOLUMES = [null, null, 'epic-vol-emboss', 'epic-vol-extrude', 'epic-vol-deep'];
+    let lastEpicFont = -1;
+    let lastEpicSize = -1;
+    let lastEpicAnim = -1;
+    let lastEpicDrift = -1;
+    let epicCoverBgEnabled = false;
+    const EPIC_COVER_BG_KEY = 'epicCoverBg';
+    let epicKaraokeEnabled = false;
+    const EPIC_KARAOKE_KEY = 'epicKaraoke';
+    let epicKaraokeWords = [];
+    let epicKaraokeSegStart = 0;
+    let epicKaraokeSegEnd = 0;
+    let epicKaraokeRafId = null;
+
+    function epicPickRandom(arr, lastIdx) {
+        if (arr.length <= 1) return 0;
+        let idx;
+        do { idx = Math.floor(Math.random() * arr.length); } while (idx === lastIdx);
+        return idx;
+    }
+
+    let lastEpicVol = -1;
+
+    function epicCreateLine(text, className, segIdx) {
+        const el = document.createElement('div');
+        el.className = 'epic-line ' + className;
+
+        const fi = epicPickRandom(EPIC_FONTS, lastEpicFont);
+        lastEpicFont = fi;
+        el.classList.add(EPIC_FONTS[fi]);
+
+        const si = epicPickRandom(EPIC_SIZES, lastEpicSize);
+        lastEpicSize = si;
+        el.classList.add(EPIC_SIZES[si]);
+
+        if (className === 'epic-line--current') {
+            const vi = epicPickRandom(EPIC_VOLUMES, lastEpicVol);
+            lastEpicVol = vi;
+            if (EPIC_VOLUMES[vi]) el.classList.add(EPIC_VOLUMES[vi]);
+        }
+
+        const isCurrent = className === 'epic-line--current';
+        const useKaraoke = isCurrent && epicKaraokeEnabled && text;
+
+        if (useKaraoke) {
+            const wrapper = document.createElement('span');
+            wrapper.className = 'epic-line__text';
+            const words = text.split(/(\s+)/);
+            const wordEls = [];
+            words.forEach((w) => {
+                const wordSpan = document.createElement('span');
+                if (/\S/.test(w)) {
+                    wordSpan.className = 'epic-word is-unseen';
+                    wordSpan.textContent = w;
+                    wordEls.push(wordSpan);
+                } else {
+                    wordSpan.textContent = w;
+                }
+                wrapper.appendChild(wordSpan);
+            });
+            el.appendChild(wrapper);
+
+            const seg = lyricsSegments[segIdx];
+            const nextSeg = lyricsSegments[segIdx + 1];
+            const segStart = seg?.start ?? 0;
+            const segEnd = seg?.end ?? (nextSeg?.start ?? segStart + 3);
+            epicKaraokeSetup(wordEls, segStart, segEnd);
+        } else {
+            const span = document.createElement('span');
+            span.className = 'epic-line__text';
+            span.textContent = text || '';
+            el.appendChild(span);
+            if (isCurrent) epicKaraokeStop();
+        }
+
+        return el;
+    }
+
+    function epicAnimateIn(el) {
+        if (!el) return;
+        const ai = epicPickRandom(EPIC_ANIMS_IN, lastEpicAnim);
+        lastEpicAnim = ai;
+        const entryClass = EPIC_ANIMS_IN[ai];
+        el.classList.add(entryClass);
+
+        const di = epicPickRandom(EPIC_DRIFTS, lastEpicDrift);
+        lastEpicDrift = di;
+        const drift = EPIC_DRIFTS[di];
+
+        el.addEventListener('animationend', function onEntryEnd(e) {
+            if (e.target !== el) return;
+            el.removeEventListener('animationend', onEntryEnd);
+            el.style.opacity = '1';
+            el.style.transform = 'translate(-50%, -50%)';
+            el.classList.remove(entryClass);
+            if (drift) {
+                requestAnimationFrame(() => {
+                    el.classList.add(drift);
+                });
+            }
+        });
+    }
+
+    function epicAnimateOut(el) {
+        if (!el) return;
+        EPIC_DRIFTS.forEach((d) => { if (d) el.classList.remove(d); });
+        el.style.opacity = '1';
+        el.style.transform = 'translate(-50%, -50%)';
+        void el.offsetWidth;
+        const cls = EPIC_ANIMS_OUT[Math.floor(Math.random() * EPIC_ANIMS_OUT.length)];
+        el.classList.add(cls);
+        el.addEventListener('animationend', () => el.remove(), { once: true });
+        setTimeout(() => { if (el.parentNode) el.remove(); }, 500);
+    }
+
+    function updateEpicDisplay(idx) {
+        if (lyricsMode !== 'epic' || !lyricsSegments.length) return;
+        if (!lyricsEpicStage) return;
+
+        if (idx < 0) {
+            if (epicCurrentEl) { epicAnimateOut(epicCurrentEl); epicCurrentEl = null; }
+            if (epicNextEl) { epicNextEl.remove(); epicNextEl = null; }
+            if (epicPrevEl) { epicPrevEl.remove(); epicPrevEl = null; }
+            return;
+        }
+
+        const safeIdx = Math.min(idx, lyricsSegments.length - 1);
+
+        if (safeIdx === lastEpicLineIndex) return;
+        lastEpicLineIndex = safeIdx;
+
+        if (epicPrevEl && epicPrevEl.parentNode) epicPrevEl.remove();
+
+        if (epicCurrentEl) {
+            epicPrevEl = epicCurrentEl;
+            epicAnimateOut(epicPrevEl);
+        }
+
+        if (epicNextEl) {
+            epicNextEl.remove();
+            epicNextEl = null;
+        }
+
+        const seg = lyricsSegments[safeIdx];
+        epicCurrentEl = epicCreateLine(seg?.text || '', 'epic-line--current', safeIdx);
+        lyricsEpicStage.appendChild(epicCurrentEl);
+        epicAnimateIn(epicCurrentEl);
+
+        const nextSeg = lyricsSegments[safeIdx + 1];
+        if (nextSeg) {
+            epicNextEl = epicCreateLine(nextSeg.text, 'epic-line--next', safeIdx + 1);
+            epicNextEl.classList.add('epic-anim-next-in');
+            epicNextEl.style.fontSize = 'clamp(0.85rem, 4cqi, 1.2rem)';
+            lyricsEpicStage.appendChild(epicNextEl);
+        }
+    }
+
+    let epicGlowSmooth = 0;
+
+    function updateEpicBassShake() {
+        if (lyricsMode !== 'epic' || !lyricsEpic || lyricsEpic.hidden || audio.paused) return;
+        if (!lyricsEpicStage) return;
+
+        const kickPower = detectKickHit();
+
+        const glowTarget = Math.min(1, kickPower * 2.5);
+        epicGlowSmooth = epicGlowSmooth * 0.6 + glowTarget * 0.4;
+        const glowSize = (8 + epicGlowSmooth * 40).toFixed(1);
+        const glowAlpha = Math.min(0.85, epicGlowSmooth * 0.9).toFixed(3);
+
+        if (epicCurrentEl) {
+            epicCurrentEl.style.setProperty('--epic-glow-size', `${glowSize}px`);
+            epicCurrentEl.style.setProperty('--epic-glow-alpha', glowAlpha);
+        }
+
+        if (kickPower <= 0.08) return;
+
+        const px = 1.2 + kickPower * 5;
+        lyricsEpic.style.setProperty('--epic-shake-x', `${px.toFixed(2)}px`);
+        lyricsEpic.style.setProperty('--epic-shake-y', `${(px * 0.7).toFixed(2)}px`);
+        lyricsEpic.style.setProperty('--epic-shake-r', `${(0.15 + kickPower * 0.6).toFixed(2)}deg`);
+        lyricsEpic.style.setProperty('--epic-shake-s', `${(kickPower * 0.025).toFixed(4)}`);
+        lyricsEpicStage.classList.add('is-epic-kick');
+        clearTimeout(lyricsEpicStage._epicKickTimer);
+        lyricsEpicStage._epicKickTimer = setTimeout(() => {
+            lyricsEpicStage.classList.remove('is-epic-kick');
+        }, 140);
+    }
+
+    function epicKaraokeSetup(wordEls, start, end) {
+        epicKaraokeWords = wordEls;
+        epicKaraokeSegStart = start;
+        epicKaraokeSegEnd = end;
+
+        if (!epicKaraokeRafId) {
+            epicKaraokeLoop();
+        }
+    }
+
+    function epicKaraokeLoop() {
+        if (!epicKaraokeWords.length || lyricsMode !== 'epic' || !epicKaraokeEnabled) {
+            epicKaraokeRafId = null;
+            return;
+        }
+
+        const t = audio.currentTime;
+        const total = epicKaraokeSegEnd - epicKaraokeSegStart;
+        const elapsed = t - epicKaraokeSegStart;
+        const totalChars = epicKaraokeWords.reduce((s, w) => s + w.textContent.length, 0);
+
+        if (total > 0 && totalChars > 0) {
+            let charsSoFar = 0;
+            for (let i = 0; i < epicKaraokeWords.length; i++) {
+                const w = epicKaraokeWords[i];
+                const wLen = w.textContent.length;
+                const wordStart = (charsSoFar / totalChars) * total;
+                const wordEnd = ((charsSoFar + wLen) / totalChars) * total;
+
+                if (elapsed < wordStart) {
+                    w.className = 'epic-word is-unseen';
+                    w.style.removeProperty('--karaoke-progress');
+                } else if (elapsed >= wordEnd) {
+                    w.className = 'epic-word is-sung';
+                    w.style.removeProperty('--karaoke-progress');
+                } else {
+                    const wordProgress = ((elapsed - wordStart) / (wordEnd - wordStart)) * 100;
+                    w.className = 'epic-word is-singing';
+                    w.style.setProperty('--karaoke-progress', `${Math.min(100, wordProgress).toFixed(1)}%`);
+                }
+                charsSoFar += wLen;
+            }
+        }
+
+        if (!audio.paused) {
+            epicKaraokeRafId = requestAnimationFrame(epicKaraokeLoop);
+        } else {
+            epicKaraokeRafId = null;
+        }
+    }
+
+    function epicKaraokeStop() {
+        epicKaraokeWords = [];
+        if (epicKaraokeRafId) {
+            cancelAnimationFrame(epicKaraokeRafId);
+            epicKaraokeRafId = null;
+        }
+    }
+
+    function toggleEpicKaraoke() {
+        epicKaraokeEnabled = !epicKaraokeEnabled;
+        try { localStorage.setItem(EPIC_KARAOKE_KEY, epicKaraokeEnabled ? '1' : ''); } catch {}
+        const btn = document.getElementById('epicKaraokeToggle');
+        if (btn) btn.classList.toggle('is-on', epicKaraokeEnabled);
+        if (epicKaraokeEnabled && epicCurrentEl && lyricsSegments.length && lastEpicLineIndex >= 0) {
+            const idx = lastEpicLineIndex;
+            lastEpicLineIndex = -1;
+            updateEpicDisplay(idx);
+        } else if (!epicKaraokeEnabled) {
+            epicKaraokeStop();
+            if (epicCurrentEl && lyricsSegments.length && lastEpicLineIndex >= 0) {
+                const idx = lastEpicLineIndex;
+                lastEpicLineIndex = -1;
+                updateEpicDisplay(idx);
+            }
+        }
+    }
+
+    function resetEpicMode() {
+        lastEpicLineIndex = -1;
+        epicCurrentEl = null;
+        epicNextEl = null;
+        epicPrevEl = null;
+        epicGlowSmooth = 0;
+        epicKaraokeStop();
+        if (lyricsEpicStage) lyricsEpicStage.innerHTML = '';
+    }
+
+    function getLyricsPanelBody() {
+        return document.querySelector('.lyrics-panel__body');
+    }
+
+    function updateEpicCoverBg() {
+        const bg = document.getElementById('epicCoverBg');
+        if (!bg) return;
+
+        if (!epicCoverBgEnabled) {
+            bg.style.backgroundImage = '';
+            return;
+        }
+
+        const src = coverArt && !coverArt.hidden ? coverArt.src : null;
+        if (src) {
+            bg.style.backgroundImage = `url('${src}')`;
+        } else {
+            bg.style.backgroundImage = '';
+        }
+    }
+
+    function toggleEpicCoverBg() {
+        epicCoverBgEnabled = !epicCoverBgEnabled;
+        try { localStorage.setItem(EPIC_COVER_BG_KEY, epicCoverBgEnabled ? '1' : ''); } catch {}
+        const body = getLyricsPanelBody();
+        if (body) body.classList.toggle('has-cover-bg', epicCoverBgEnabled);
+        const btn = document.getElementById('epicCoverToggle');
+        if (btn) btn.classList.toggle('is-on', epicCoverBgEnabled);
+        updateEpicCoverBg();
+    }
+
+    function initEpicCoverBg() {
+        try { epicCoverBgEnabled = localStorage.getItem(EPIC_COVER_BG_KEY) === '1'; } catch {}
+        const body = getLyricsPanelBody();
+        if (body && epicCoverBgEnabled) body.classList.add('has-cover-bg');
+        const btn = document.getElementById('epicCoverToggle');
+        if (btn) {
+            btn.addEventListener('click', toggleEpicCoverBg);
+            if (epicCoverBgEnabled) btn.classList.add('is-on');
+        }
+    }
+
+    function initEpicKaraoke() {
+        try { epicKaraokeEnabled = localStorage.getItem(EPIC_KARAOKE_KEY) === '1'; } catch {}
+        const btn = document.getElementById('epicKaraokeToggle');
+        if (btn) {
+            btn.addEventListener('click', toggleEpicKaraoke);
+            if (epicKaraokeEnabled) btn.classList.add('is-on');
+        }
+    }
+
     function updateVideoclipBassShake() {
         if (lyricsMode !== 'videoclip' || lyricsVideoclip.hidden || audio.paused) return;
 
@@ -413,6 +783,7 @@
 
     function refreshListLyricsVisibility() {
         lyricsVideoclip.hidden = true;
+        if (lyricsEpic) lyricsEpic.hidden = true;
         vcHint.hidden = true;
         lyricsVcStage.hidden = false;
 
@@ -437,10 +808,12 @@
         lyricsMode = mode;
         localStorage.setItem(LYRICS_MODE_KEY, mode);
         lyricsPanel.classList.toggle('is-videoclip-mode', mode === 'videoclip');
+        lyricsPanel.classList.toggle('is-epic-mode', mode === 'epic');
 
         if (mode === 'videoclip') {
             lyricsScroll.hidden = true;
             lyricsPlain.hidden = true;
+            if (lyricsEpic) lyricsEpic.hidden = true;
 
             if (!lyricsStatus.hidden) {
                 lyricsVideoclip.hidden = true;
@@ -466,6 +839,34 @@
                 LyricsSync.findSegmentIndex(lyricsSegments, getLyricsPlaybackTime()),
                 getLyricsPlaybackTime()
             );
+        } else if (mode === 'epic') {
+            lyricsScroll.hidden = true;
+            lyricsPlain.hidden = true;
+            lyricsVideoclip.hidden = true;
+
+            if (!lyricsStatus.hidden) {
+                if (lyricsEpic) lyricsEpic.hidden = true;
+                return;
+            }
+
+            if (lyricsEpic) lyricsEpic.hidden = false;
+
+            if (!lyricsSegments.length && pendingPlainText) {
+                loadPlainLyricSegments(pendingPlainText, audio.duration);
+            }
+
+            if (!lyricsSegments.length) {
+                if (lyricsEpicStage) lyricsEpicStage.hidden = true;
+                if (epicHint) epicHint.hidden = false;
+                return;
+            }
+
+            if (lyricsEpicStage) lyricsEpicStage.hidden = false;
+            if (epicHint) epicHint.hidden = true;
+            resetEpicMode();
+            updateEpicDisplay(
+                LyricsSync.findSegmentIndex(lyricsSegments, getLyricsPlaybackTime())
+            );
         } else {
             refreshListLyricsVisibility();
             if (lyricsSynced) {
@@ -485,6 +886,7 @@
         lyricsSynced = false;
         activeSegmentIndex = -1;
         if (lyricsNow) lyricsNow.textContent = '';
+        resetEpicMode();
     }
 
     function setLyricsLoading() {
@@ -492,6 +894,7 @@
         lyricsStage.hidden = true;
         lyricsPlain.hidden = true;
         lyricsVideoclip.hidden = true;
+        if (lyricsEpic) lyricsEpic.hidden = true;
         lyricsStatus.hidden = false;
         lyricsStatus.className = 'lyrics-panel__status is-loading';
         lyricsStatus.textContent = 'Buscando letra…';
@@ -503,6 +906,7 @@
         lyricsStage.hidden = true;
         lyricsPlain.hidden = true;
         lyricsVideoclip.hidden = true;
+        if (lyricsEpic) lyricsEpic.hidden = true;
         lyricsStatus.hidden = false;
         lyricsStatus.className = 'lyrics-panel__status';
         lyricsStatus.textContent = msg;
@@ -572,6 +976,11 @@
 
         if (lyricsMode === 'videoclip') {
             updateVideoclipDisplay(idx, t);
+            return;
+        }
+
+        if (lyricsMode === 'epic') {
+            updateEpicDisplay(idx);
             return;
         }
 
@@ -714,11 +1123,22 @@
         setLyricsMessage('No se encontró letra para esta canción');
     }
 
+    function getActiveCatalogSong() {
+        if (!activeCatalogId) return null;
+        return songCatalog.find((s) => s.id === activeCatalogId) || null;
+    }
+
     function onMetadataReady(file, tags, embeddedLyrics) {
         const fromFile = parseArtistTitleFromFilename(file.name);
+        const catalogSong = getActiveCatalogSong();
+        const title =
+            catalogSong?.title || tags.title || fromFile.title || titleFromFilename(file.name);
+        const artist = catalogSong?.artist || tags.artist || fromFile.artist || '';
+
+        trackTitle.textContent = title;
         trackMeta = {
-            title: tags.title || fromFile.title || titleFromFilename(file.name),
-            artist: tags.artist || fromFile.artist || '',
+            title,
+            artist,
             album: tags.album || '',
             duration: Number.isFinite(audio.duration) ? audio.duration : 0,
         };
@@ -730,8 +1150,12 @@
 
     function readMetadata(file) {
         const fallback = parseArtistTitleFromFilename(file.name);
-        trackTitle.textContent = fallback.title;
-        trackMeta = { title: fallback.title, artist: fallback.artist, album: '', duration: 0 };
+        const catalogSong = getActiveCatalogSong();
+        const initialTitle = catalogSong?.title || fallback.title;
+        const initialArtist = catalogSong?.artist || fallback.artist;
+
+        trackTitle.textContent = initialTitle;
+        trackMeta = { title: initialTitle, artist: initialArtist, album: '', duration: 0 };
         resetCover();
         setLyricsMessage('Sube una canción para ver la letra');
 
@@ -749,7 +1173,12 @@
         jsmediatags.read(file, {
             onSuccess(tag) {
                 const tags = tag.tags || {};
-                if (tags.title) trackTitle.textContent = tags.title;
+                const catalogSong = getActiveCatalogSong();
+                if (catalogSong?.title) {
+                    trackTitle.textContent = catalogSong.title;
+                } else if (tags.title) {
+                    trackTitle.textContent = tags.title;
+                }
                 if (tags.picture && tags.picture.data) {
                     const blob = new Blob([new Uint8Array(tags.picture.data)], {
                         type: tags.picture.format || 'image/jpeg',
@@ -773,12 +1202,14 @@
             onError() {
                 const fetchId = ++lyricsFetchId;
                 setLyricsLoading();
+                const catalogSong = getActiveCatalogSong();
                 trackMeta = {
-                    title: fallback.title,
-                    artist: fallback.artist,
+                    title: catalogSong?.title || fallback.title,
+                    artist: catalogSong?.artist || fallback.artist,
                     album: '',
                     duration: 0,
                 };
+                trackTitle.textContent = trackMeta.title;
                 audio.addEventListener('loadedmetadata', function once() {
                     trackMeta.duration = audio.duration;
                     resolveLyrics(trackMeta, '', fetchId, file);
@@ -792,34 +1223,45 @@
         return Math.min(maxBin, Math.max(0, Math.round((freq * fftSize) / sampleRate)));
     }
 
-    /** Simétrico: centro = graves (40 Hz), extremos = agudos (17.5 kHz), escala log. */
-    function buildSymmetricSpectrumMap(bufferLength) {
+    /** Cada barra = mismo ancho de banda (log entre lower/higher cutoff), izquierda → graves, derecha → agudos. */
+    function buildBarSpectrumMap(bufferLength) {
         barSpectrumMap = [];
         const maxBin = bufferLength - 1;
-        const center = (BAR_COUNT - 1) / 2;
         const sampleRate = audioCtx?.sampleRate || 48000;
         const fftSize = analyser?.fftSize || 2048;
         const logMin = Math.log10(CAVA_CONFIG.lowerCutoffFreq);
         const logMax = Math.log10(CAVA_CONFIG.higherCutoffFreq);
 
         for (let i = 0; i < BAR_COUNT; i++) {
-            const sideNorm = Math.abs(i - center) / center;
-            const freq = Math.pow(10, logMin + sideNorm * (logMax - logMin));
-            const bin = freqToBin(freq, sampleRate, fftSize, maxBin);
-            const blendBins = [bin];
-            if (sideNorm > 0.04 && sideNorm < 0.98) {
-                blendBins.push(Math.max(0, bin - 1), Math.min(maxBin, bin + 1));
+            const t0 = i / BAR_COUNT;
+            const t1 = (i + 1) / BAR_COUNT;
+            const f0 = Math.pow(10, logMin + t0 * (logMax - logMin));
+            const f1 = Math.pow(10, logMin + t1 * (logMax - logMin));
+            const binStart = freqToBin(f0, sampleRate, fftSize, maxBin);
+            const binEnd = Math.max(binStart, freqToBin(f1, sampleRate, fftSize, maxBin));
+
+            const blendBins = [];
+            for (let b = binStart; b <= binEnd; b++) {
+                blendBins.push(b);
+            }
+            if (!blendBins.length) {
+                blendBins.push(Math.min(maxBin, binStart));
             }
 
             barSpectrumMap.push({
-                bin,
-                blendBins: [...new Set(blendBins)],
+                blendBins,
             });
         }
     }
 
-    const VISUALIZER_GAIN = (CAVA_CONFIG.sensitivity / 100) * 0.44 * (CAVA_CONFIG.autosens / 2);
-    const VISUALIZER_MAX_SCALE = 0.68;
+    const VISUALIZER_GAIN = (CAVA_CONFIG.sensitivity / 100) * 0.4 * (CAVA_CONFIG.autosens / 2);
+    const VISUALIZER_MAX_SCALE = 1;
+
+    /** Leve atenuación en graves (izquierda); mismas bandas, menos pegar al techo. */
+    function lowFreqAttenuation(barIndex) {
+        const t = barIndex / (BAR_COUNT - 1);
+        return 0.76 + 0.24 * Math.pow(t, 0.6);
+    }
 
     function initVisualizerBars() {
         visualizerBars.innerHTML = '';
@@ -851,7 +1293,7 @@
         audioSource.connect(analyser);
         analyser.connect(audioCtx.destination);
         freqData = new Uint8Array(analyser.frequencyBinCount);
-        buildSymmetricSpectrumMap(freqData.length);
+        buildBarSpectrumMap(freqData.length);
     }
 
     function sampleSpectrumBar(map, data) {
@@ -888,7 +1330,7 @@
         analyser.getByteFrequencyData(freqData);
 
         if (barSpectrumMap.length !== BAR_COUNT) {
-            buildSymmetricSpectrumMap(freqData.length);
+            buildBarSpectrumMap(freqData.length);
         }
 
         const raw = [];
@@ -908,14 +1350,14 @@
         );
 
         const normalizeBase = Math.max(
-            visualizerSensFloor * 1.75,
-            visualizerPeakHold * 0.96,
-            0.12
+            visualizerSensFloor * 1.8,
+            visualizerPeakHold * 1.02,
+            0.13
         );
 
         for (let i = 0; i < BAR_COUNT; i++) {
-            const relative = raw[i] / normalizeBase;
-            const target = Math.max(0.1, Math.min(VISUALIZER_MAX_SCALE, relative * VISUALIZER_MAX_SCALE));
+            const relative = (raw[i] / normalizeBase) * lowFreqAttenuation(i);
+            const target = Math.max(0.08, Math.min(VISUALIZER_MAX_SCALE, relative * VISUALIZER_MAX_SCALE));
             const prev = barSmoothLevels[i];
             const smooth = target > prev ? 0.34 : 0.18;
             const scale = prev + (target - prev) * smooth;
@@ -924,6 +1366,7 @@
         }
 
         updateVideoclipBassShake();
+        updateEpicBassShake();
     }
 
     function visualizerTick(timestamp) {
@@ -975,18 +1418,260 @@
         setLyricsMessage('Sube una canción para ver la letra');
     }
 
-    function loadFile(file) {
-        if (!file || !file.type.startsWith('audio/')) return;
+    function isAudioFile(file) {
+        if (!file) return false;
+        if (file.type && file.type.startsWith('audio/')) return true;
+        return /\.(mp3|wav|ogg|m4a|flac|aac|webm)$/i.test(file.name || '');
+    }
+
+    function loadFile(file, options) {
+        if (!isAudioFile(file)) return;
 
         revokeObjectUrl();
         resetPlayerUi();
         setLyricsLoading();
         currentAudioFile = file;
 
+        if (options?.catalogId) {
+            activeCatalogId = options.catalogId;
+        } else {
+            activeCatalogId = null;
+        }
+
+        if (options?.lrcText) {
+            externalLrcText = options.lrcText;
+        } else if (!options?.keepExternalLrc) {
+            externalLrcText = null;
+        }
+
         objectUrl = URL.createObjectURL(file);
         audio.src = objectUrl;
         setPlayerReady();
+        updateLibraryActiveState();
         readMetadata(file);
+
+        if (options?.autoplay) {
+            const onCanPlay = () => {
+                audio.removeEventListener('canplay', onCanPlay);
+                audio.play().catch(() => {});
+            };
+            audio.addEventListener('canplay', onCanPlay);
+        }
+    }
+
+    function isLibraryTrackPlaying(songId) {
+        return (
+            songId === activeCatalogId &&
+            audio.src &&
+            playerEl.classList.contains('has-track') &&
+            !audio.paused
+        );
+    }
+
+    function updateLibraryPlayIcons() {
+        if (!songLibrary) return;
+        songLibrary.querySelectorAll('.library__play').forEach((btn) => {
+            const item = btn.closest('.library__item');
+            const songId = item?.dataset.songId;
+            const icon = btn.querySelector('i');
+            const isPlaying = isLibraryTrackPlaying(songId);
+
+            if (icon) {
+                icon.className = isPlaying ? 'fas fa-pause' : 'fas fa-play';
+            }
+            btn.setAttribute('aria-label', isPlaying ? 'Pausar' : 'Reproducir');
+            btn.classList.toggle('is-playing', isPlaying);
+        });
+    }
+
+    function getCatalogSongIndex(songId) {
+        return songCatalog.findIndex((s) => s.id === songId);
+    }
+
+    function updatePlayerNav() {
+        const hasCatalogTrack =
+            activeCatalogId && audio.src && playerEl.classList.contains('has-track');
+        const idx = hasCatalogTrack ? getCatalogSongIndex(activeCatalogId) : -1;
+        const isPlaying = hasCatalogTrack && !audio.paused;
+
+        if (playerPrevBtn) {
+            const hasPrev = idx > 0;
+            playerPrevBtn.classList.toggle('is-unavailable', !hasPrev);
+            playerPrevBtn.disabled = !hasPrev;
+            playerPrevBtn.setAttribute('aria-label', hasPrev ? `Anterior: ${songCatalog[idx - 1].title}` : 'Anterior');
+            playerPrevBtn.classList.toggle('is-playing', isPlaying && hasPrev);
+        }
+
+        if (playerNextBtn) {
+            const hasNext = idx >= 0 && idx < songCatalog.length - 1;
+            playerNextBtn.classList.toggle('is-unavailable', !hasNext);
+            playerNextBtn.disabled = !hasNext;
+            playerNextBtn.setAttribute(
+                'aria-label',
+                hasNext ? `Siguiente: ${songCatalog[idx + 1].title}` : 'Siguiente'
+            );
+            playerNextBtn.classList.toggle('is-playing', isPlaying && hasNext);
+        }
+    }
+
+    function updateLibraryActiveState() {
+        if (!songLibrary) return;
+        songLibrary.querySelectorAll('.library__item[data-song-id]').forEach((item) => {
+            const songId = item.dataset.songId;
+            const isActive =
+                songId === activeCatalogId && audio.src && playerEl.classList.contains('has-track');
+            item.classList.toggle('is-active', isActive);
+            item.classList.toggle('is-playing', isLibraryTrackPlaying(songId));
+        });
+        updateLibraryPlayIcons();
+        updatePlayerNav();
+    }
+
+    function handleLibraryPlay(song) {
+        if (!song?.id) return;
+
+        const isCurrentTrack =
+            activeCatalogId === song.id && audio.src && playerEl.classList.contains('has-track');
+
+        if (isCurrentTrack) {
+            if (audio.paused) {
+                audio.play().catch(() => {});
+            } else {
+                audio.pause();
+            }
+            return;
+        }
+
+        loadCatalogSong(song, { autoplay: true });
+    }
+
+    function renderSongLibrary() {
+        if (!songLibrary) return;
+
+        songLibrary.innerHTML = '';
+
+        if (!songCatalog.length) {
+            const empty = document.createElement('li');
+            empty.className = 'library__empty';
+            empty.textContent = 'No hay canciones en la biblioteca';
+            songLibrary.appendChild(empty);
+            return;
+        }
+
+        songCatalog.forEach((song) => {
+            const item = document.createElement('li');
+            item.className = 'library__item';
+            item.dataset.songId = song.id;
+
+            const row = document.createElement('div');
+            row.className = 'library__row';
+
+            const controls = document.createElement('div');
+            controls.className = 'library__controls';
+
+            const play = document.createElement('button');
+            play.type = 'button';
+            play.className = 'library__play liquid-glass glass-white';
+            play.setAttribute('aria-label', `Reproducir ${song.title}`);
+            play.innerHTML = '<i class="fas fa-play" aria-hidden="true"></i>';
+            play.addEventListener('click', (e) => {
+                e.stopPropagation();
+                handleLibraryPlay(song);
+            });
+            controls.appendChild(play);
+
+            const main = document.createElement('button');
+            main.type = 'button';
+            main.className = 'library__main';
+            main.setAttribute('aria-label', `Seleccionar ${song.title}`);
+
+            const info = document.createElement('span');
+            info.className = 'library__info';
+
+            const infoLine = document.createElement('span');
+            infoLine.className = 'library__info-line';
+
+            const wave = document.createElement('span');
+            wave.className = 'library__wave';
+            wave.setAttribute('aria-hidden', 'true');
+            wave.innerHTML = '<span></span><span></span><span></span><span></span>';
+
+            const title = document.createElement('span');
+            title.className = 'library__title';
+            title.textContent = song.title;
+
+            infoLine.appendChild(wave);
+            infoLine.appendChild(title);
+            info.appendChild(infoLine);
+
+            if (song.artist) {
+                const artist = document.createElement('span');
+                artist.className = 'library__artist';
+                artist.textContent = song.artist;
+                info.appendChild(artist);
+            }
+
+            main.addEventListener('click', () => {
+                if (activeCatalogId === song.id && audio.src) return;
+                loadCatalogSong(song);
+            });
+
+            main.appendChild(info);
+            row.appendChild(controls);
+            row.appendChild(main);
+            item.appendChild(row);
+            songLibrary.appendChild(item);
+        });
+
+        updateLibraryActiveState();
+    }
+
+    async function loadCatalogSong(song, options) {
+        if (!song?.audio) return;
+
+        try {
+            const [audioRes, lrcRes] = await Promise.all([
+                fetch(`${SONGS_BASE}${song.audio}`),
+                song.lrc ? fetch(`${SONGS_BASE}${song.lrc}`) : Promise.resolve(null),
+            ]);
+
+            if (!audioRes.ok) throw new Error('audio');
+
+            const audioBlob = await audioRes.blob();
+            const audioFile = new File(
+                [audioBlob],
+                song.audio,
+                { type: audioBlob.type || 'audio/mpeg' }
+            );
+
+            let lrcText = null;
+            if (lrcRes?.ok) {
+                lrcText = (await lrcRes.text()).trim();
+            }
+
+            loadFile(audioFile, {
+                catalogId: song.id,
+                lrcText,
+                autoplay: Boolean(options?.autoplay),
+            });
+        } catch {
+            setLyricsMessage('No se pudo cargar la canción de la biblioteca');
+        }
+    }
+
+    async function initSongLibrary() {
+        if (!songLibrary) return;
+
+        try {
+            const res = await fetch(`${SONGS_BASE}catalog.json`);
+            if (!res.ok) throw new Error('catalog');
+            const data = await res.json();
+            songCatalog = Array.isArray(data?.songs) ? data.songs : [];
+        } catch {
+            songCatalog = [];
+        }
+
+        renderSongLibrary();
     }
 
     fileInput.addEventListener('change', () => {
@@ -1017,9 +1702,29 @@
         fileInput.click();
     });
 
+    if (playerPrevBtn) {
+        playerPrevBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const idx = getCatalogSongIndex(activeCatalogId);
+            if (idx > 0) loadCatalogSong(songCatalog[idx - 1], { autoplay: true });
+        });
+    }
+
+    if (playerNextBtn) {
+        playerNextBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const idx = getCatalogSongIndex(activeCatalogId);
+            if (idx >= 0 && idx < songCatalog.length - 1) {
+                loadCatalogSong(songCatalog[idx + 1], { autoplay: true });
+            }
+        });
+    }
+
     function updatePlayIcon() {
         playIcon.className = audio.paused ? 'fas fa-play' : 'fas fa-pause';
         playBtn.setAttribute('aria-label', audio.paused ? 'Reproducir' : 'Pausar');
+        updateLibraryPlayIcons();
+        updatePlayerNav();
     }
 
     playBtn.addEventListener('click', () => {
@@ -1039,6 +1744,9 @@
         }
         startLyricsLoop();
         startVisualizer();
+        if (epicKaraokeEnabled && epicKaraokeWords.length && !epicKaraokeRafId) {
+            epicKaraokeLoop();
+        }
     });
 
     audio.addEventListener('pause', () => {
@@ -1187,7 +1895,7 @@
 
     try {
         const storedMode = localStorage.getItem(LYRICS_MODE_KEY);
-        if (storedMode === 'videoclip' || storedMode === 'list') {
+        if (storedMode === 'videoclip' || storedMode === 'list' || storedMode === 'epic') {
             lyricsMode = storedMode;
         }
     } catch (e) {}
@@ -1198,4 +1906,7 @@
     initVisualizerBars();
     visualizerEl.classList.add('is-live');
     paintIdleVisualizerWave();
+    initSongLibrary();
+    initEpicCoverBg();
+    initEpicKaraoke();
 })();

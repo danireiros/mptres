@@ -1,0 +1,18 @@
+{
+  "songs": [
+    {
+      "id": "gran-canaria",
+      "title": "Gran Canaria",
+      "artist": "Suno.ai",
+      "audio": "gran-canaria.mp3",
+      "lrc": "gran-canaria.lrc"
+    },
+    {
+      "id": "nieves-del-pico",
+      "title": "Nieves del Pico",
+      "artist": "Suno.ai",
+      "audio": "nieves-del-pico.mp3",
+      "lrc": "nieves-del-pico.lrc"
+    }
+  ]
+}
